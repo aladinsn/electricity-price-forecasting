@@ -2,8 +2,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.baselines import NaiveD1, NaiveD7, NaiveReference, same_hours_days_before
-from src.config import HORIZON, TARGET
+from src.baselines import HoltWinters, NaiveD1, NaiveD7, NaiveReference, same_hours_days_before
+from src.config import FIT_WINDOW_HOURS, HORIZON, HW_SEASON, TARGET
 from src.data import split_for_day
 from src.evaluation import RESULT_COLUMNS, QUANTILE_COLUMNS, run_rolling
 from tests.conftest import make_toy
@@ -67,3 +67,45 @@ def test_naives_in_rolling_loop(toy_df, tmp_path):
     ref = run_rolling(NaiveReference(), "naive_ref", toy_df, WEEK, results_dir=tmp_path)
     errors = (ref["y_true"] - ref["y_pred"]).groupby(ref["target_date"].dt.day_of_week).unique()
     assert {dow: list(e) for dow, e in errors.items()} == {0: [700], 1: [100], 2: [100], 3: [100], 4: [100], 5: [700], 6: [700]}
+
+
+def make_weekly(n_weeks: int, seed: int = 0) -> pd.DataFrame:
+    """Dataset whose price is a fixed weekly profile (with negative hours) plus small noise."""
+    df = make_toy(start="2026-01-05", n_days=7 * n_weeks)  # starts on a Monday
+    rng = np.random.default_rng(seed)
+    position = (df.index.day_of_week * 24 + df.index.hour).to_numpy()
+    profile = 60 + 40 * np.sin(2 * np.pi * np.arange(HW_SEASON) / 24) - 30 * (np.arange(HW_SEASON) >= 120)
+    df[TARGET] = profile[position] + rng.normal(0, 1, len(df))
+    assert (df[TARGET] < 0).any()  # additive seasonality must handle negative prices
+    return df
+
+
+def test_holt_winters_recovers_weekly_profile():
+    df = make_weekly(n_weeks=10)
+    day = df.index[-1].normalize() - pd.Timedelta(days=1)  # a Saturday, low-price regime of the profile
+    history, future_cov = split_for_day(df, day)
+    y_pred, quantiles = HoltWinters().predict(history, future_cov)
+
+    assert quantiles is None and y_pred.shape == (HORIZON,)
+    actual = df.loc[future_cov.index, TARGET].to_numpy()
+    assert np.abs(y_pred - actual).mean() < 3  # noise sd is 1 EUR/MWh
+
+
+def test_holt_winters_only_uses_the_fit_window():
+    df = make_weekly(n_weeks=10)
+    day = df.index[-1].normalize()
+    history, future_cov = split_for_day(df, day)
+    altered = history.copy()
+    altered.iloc[: len(history) - FIT_WINDOW_HOURS, altered.columns.get_loc(TARGET)] = 1e4  # before the window
+    y_pred, _ = HoltWinters().predict(history, future_cov)
+    y_altered, _ = HoltWinters().predict(altered, future_cov)
+    np.testing.assert_array_equal(y_pred, y_altered)
+
+
+def test_holt_winters_rejects_short_history():
+    df = make_weekly(n_weeks=8)  # 1,344 h in total, so history (up to D-1) is shorter than the window
+    history, future_cov = split_for_day(df, df.index[-1].normalize())
+    with pytest.raises(ValueError):
+        HoltWinters().predict(history, future_cov)
+    with pytest.raises(ValueError):
+        HoltWinters(window=HW_SEASON)
