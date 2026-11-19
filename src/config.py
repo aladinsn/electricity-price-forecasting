@@ -44,6 +44,9 @@ HORIZON = 24  # 24 hourly prices of day D
 # Classical models
 FIT_WINDOW_HOURS = 8 * 7 * 24  # 8 weeks = 1,344 h (SARIMA, SARIMAX, Holt-Winters)
 SARIMA_SEASON = 24
+# SARIMA / SARIMAX orders, selected on the pre-test period only (02_exploration.ipynb, section 7). Frozen.
+SARIMA_ORDER = (1, 0, 1)  # (p, d, q)
+SARIMA_SEASONAL_ORDER = (1, 1, 1, SARIMA_SEASON)  # (P, D, Q, s)
 HW_SEASON = 168
 
 # Foundation models
