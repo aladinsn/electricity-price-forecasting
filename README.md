@@ -40,6 +40,7 @@ src/
   config.py             # protocol periods and parameters
   data.py               # loading, history / future covariates split
   evaluation.py         # common rolling loop, metrics
+  foundation.py         # TimesFM 3 / Timestral wrappers, context and covariate arrays
 tests/                  # unit tests of src/ on synthetic data
 figures/                # final figures
 ```

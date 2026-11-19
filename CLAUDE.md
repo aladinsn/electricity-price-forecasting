@@ -212,6 +212,7 @@ src/
   config.py               # protocol constants: periods, zone, context, horizon, columns
   data.py                 # dataset loading, context / future covariates split for a day D
   evaluation.py           # common rolling loop + metrics
+  foundation.py           # foundation model wrappers: context + known-future covariate arrays for a day D
 tests/                    # pytest unit tests of src/ on synthetic data (`uv run pytest`)
 results/                  # one parquet per model (not versioned); control period in results/control/
 figures/                  # final figures exported as PNG (versioned)
