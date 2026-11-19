@@ -6,6 +6,7 @@ from typing import Protocol
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 from src.config import HORIZON, QUANTILE_COLUMNS, QUANTILES, RESULTS_DIR, ROOT, TARGET
 from src.data import split_for_day
@@ -131,11 +132,62 @@ def pinball(y_true, quantiles: pd.DataFrame) -> float:
     return float(np.mean(np.maximum(tau * diff, (tau - 1) * diff)))
 
 
-def diebold_mariano(errors_a: pd.DataFrame, errors_b: pd.DataFrame, norm: int = 1) -> float:
-    """One-sided multivariate Diebold-Mariano test (H1: model B is more accurate than model A).
+def daily_errors(results: pd.DataFrame) -> pd.DataFrame:
+    """Errors y_true - y_pred of one model as a (days, 24) table: index target_date, columns hour 0 … 23.
 
-    Errors are (days, 24) arrays; the loss differential is computed on the daily vector of
-    24 errors. Reimplementation of `epftoolbox.evaluation.DM` (Apache-2.0, Lago et al. 2021).
-    Returns the p-value.
+    Input: long-format results of a single model (RESULT_COLUMNS), as returned by `run_rolling`.
     """
-    raise NotImplementedError
+    if results["model"].nunique() != 1:
+        raise ValueError(f"Expected the results of a single model, got {sorted(results['model'].unique())}")
+    errors = (results["y_true"] - results["y_pred"]).to_numpy()
+    table = pd.DataFrame({"target_date": results["target_date"], "hour": results["hour"], "error": errors})
+    table = table.pivot(index="target_date", columns="hour", values="error").sort_index()
+    if list(table.columns) != list(range(HORIZON)) or table.isna().any().any():
+        raise ValueError(f"Expected {HORIZON} hourly errors for every day")
+    return table
+
+
+def diebold_mariano(errors_a, errors_b, norm: int = 1) -> float:
+    """One-sided multivariate Diebold-Mariano test; returns the p-value.
+
+    H0: the forecasts of model B are not more accurate than those of model A.
+    H1: model B is more accurate. A small p-value (e.g. < 0.05) means B is significantly better than A;
+    swap the arguments to test the other direction.
+
+    `errors_a`, `errors_b`: (days, 24) errors of the two models on the same days (see `daily_errors`).
+    The loss differential is computed on the daily vector of 24 errors,
+        d_t = mean_h |e_A[t, h]|^norm - mean_h |e_B[t, h]|^norm,     norm = 1 (MAE) or 2 (MSE),
+    and DM = mean(d) / sqrt(var(d) / N) (population variance, N days) is compared with a standard normal:
+    p = P(Z > DM). Unlike the original DM test, there is no autocorrelation (HAC) correction: d_t is a
+    daily series of one-step-ahead (day D) forecasts, as in epftoolbox.
+
+    Reimplementation of the `version="multivariate"` branch of `epftoolbox.evaluation.DM`
+    (J. Lago, https://github.com/jeslago/epftoolbox, Apache-2.0; method in Lago, Marcjasz, De Schutter
+    and Weron, "Forecasting day-ahead electricity prices: A review of state-of-the-art algorithms, best
+    practices and an open-access benchmark", Applied Energy 293, 2021). epftoolbox takes the actual prices
+    and the two forecasts; this version takes the errors directly (the losses only use |e| or e^2).
+    One deliberate difference: the p-value uses `norm.sf(DM)` instead of `1 - norm.cdf(DM)`, which is
+    the same number but does not round to 0 for DM > 8.
+
+    Checked once (2026-11-19) against epftoolbox 1.0 (commit 47d6e06 of 2025-10-25, installed without its
+    dependencies in a separate environment; numpy 2.5.4, scipy 1.18.1, Python 3.12.13) on 2,000 random
+    error matrices (both norms, 5 to 400 days, heavy-tailed and biased errors, p-values from 0 to 1):
+    max absolute p-value difference 1.1e-16. Script: tests/check_dm_against_epftoolbox.py.
+    """
+    if norm not in (1, 2):
+        raise ValueError("norm must be 1 or 2")
+    if isinstance(errors_a, pd.DataFrame) and isinstance(errors_b, pd.DataFrame):
+        if not errors_a.index.equals(errors_b.index):
+            raise ValueError("The two models must be evaluated on the same days")
+    errors_a, errors_b = _as_pair(errors_a, errors_b)
+    if errors_a.ndim != 2 or errors_a.shape[1] != HORIZON:
+        raise ValueError(f"Errors must have shape (days, {HORIZON}), got {errors_a.shape}")
+    if not (np.isfinite(errors_a).all() and np.isfinite(errors_b).all()):
+        raise ValueError("Errors must be finite")
+
+    d = np.mean(np.abs(errors_a) ** norm, axis=1) - np.mean(np.abs(errors_b) ** norm, axis=1)
+    var_d = np.var(d, ddof=0)
+    if var_d == 0:
+        raise ValueError("Constant loss differential (e.g. identical forecasts): the DM test is undefined")
+    dm_stat = np.mean(d) / np.sqrt(var_d / d.size)
+    return float(stats.norm.sf(dm_stat))
