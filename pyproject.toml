@@ -25,7 +25,10 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["nbstripout"]
+dev = [
+    "nbstripout",
+    "pytest>=9.2.0",
+]
 
 [build-system]
 requires = ["setuptools>=69"]
@@ -33,3 +36,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 packages = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
