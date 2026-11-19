@@ -1,9 +1,10 @@
 import numpy as np
 import pandas as pd
 import pytest
+from scipy import stats
 
 from src.config import QUANTILE_COLUMNS, QUANTILES, TARGET
-from src.evaluation import RESULT_COLUMNS, mae, pinball, rmae, rmse, run_rolling
+from src.evaluation import RESULT_COLUMNS, daily_errors, diebold_mariano, mae, pinball, rmae, rmse, run_rolling
 
 DAYS = pd.date_range("2026-04-06", "2026-04-08", freq="D")  # Monday to Wednesday
 
@@ -119,3 +120,54 @@ def test_run_rolling_rejects_bad_forecasts(toy_df, tmp_path, bad_output):
 def test_run_rolling_requires_increasing_days(toy_df, tmp_path):
     with pytest.raises(ValueError):
         run_rolling(NaiveD1(), "naive_d1", toy_df, DAYS[::-1], results_dir=tmp_path)
+
+
+# Diebold-Mariano test (checked against epftoolbox once, see tests/check_dm_against_epftoolbox.py)
+
+
+def test_diebold_mariano_by_hand():
+    # Model B is perfect; model A has |error| 1, 2, 3 on days 1, 2, 3 (signs must not matter).
+    errors_a = np.array([[-1.0] * 24, [2.0] * 24, [-3.0] * 24])
+    errors_b = np.zeros((3, 24))
+    # norm 1: d = [1, 2, 3], mean 2, population variance 2/3, DM = 2 / sqrt(2/9) = 3 sqrt(2)
+    assert diebold_mariano(errors_a, errors_b, norm=1) == pytest.approx(stats.norm.sf(3 * np.sqrt(2)))
+    # norm 2: d = [1, 4, 9], mean 14/3, population variance 98/9, DM = (14/3) / sqrt(98/27) = sqrt(6)
+    assert diebold_mariano(errors_a, errors_b, norm=2) == pytest.approx(stats.norm.sf(np.sqrt(6)))
+
+
+def test_diebold_mariano_direction():
+    rng = np.random.default_rng(0)
+    errors_good, errors_bad = rng.normal(0, 1, (100, 24)), rng.normal(0, 3, (100, 24))
+    # H1 "B more accurate than A": rejected when B is the good model, not the other way round
+    assert diebold_mariano(errors_bad, errors_good) < 0.01
+    assert diebold_mariano(errors_good, errors_bad) > 0.99
+    # One-sided p-values of the two directions sum to 1
+    assert diebold_mariano(errors_bad, errors_good) + diebold_mariano(errors_good, errors_bad) == pytest.approx(1)
+
+
+def test_diebold_mariano_rejects_bad_inputs():
+    errors = np.random.default_rng(0).normal(size=(10, 24))
+    with pytest.raises(ValueError):
+        diebold_mariano(errors, errors[:9])  # different number of days
+    with pytest.raises(ValueError):
+        diebold_mariano(errors.ravel(), errors.ravel())  # not (days, 24)
+    with pytest.raises(ValueError):
+        diebold_mariano(errors, errors)  # identical forecasts: zero variance
+    with pytest.raises(ValueError):
+        diebold_mariano(errors, errors * 2, norm=3)
+    a = pd.DataFrame(errors, index=pd.date_range("2026-04-01", periods=10))
+    with pytest.raises(ValueError):
+        diebold_mariano(a, a.set_axis(a.index + pd.Timedelta(days=1)) * 2)  # different days
+
+
+def test_daily_errors_from_rolling_results(toy_df, tmp_path):
+    results = run_rolling(NaiveD1(), "naive_d1", toy_df, DAYS, results_dir=tmp_path)
+    errors = daily_errors(results.sample(frac=1, random_state=0))  # row order must not matter
+    assert errors.shape == (len(DAYS), 24)
+    assert list(errors.index) == list(DAYS)
+    assert list(errors.columns) == list(range(24))
+    assert (errors == 100).all().all()  # naive D-1 is 100 below the actual price at every hour
+    with pytest.raises(ValueError):
+        daily_errors(pd.concat([results, results.assign(model="other")]))
+    with pytest.raises(ValueError):
+        daily_errors(results.iloc[:-1])  # one hour missing
