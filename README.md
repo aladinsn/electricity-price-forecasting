@@ -40,6 +40,7 @@ src/
   config.py             # protocol periods and parameters
   data.py               # loading, history / future covariates split
   evaluation.py         # common rolling loop, metrics
+tests/                  # unit tests of src/ on synthetic data
 figures/                # final figures
 ```
 
@@ -49,6 +50,7 @@ figures/                # final figures
 uv sync                      # install the environment
 uv run nbstripout --install  # strip notebook outputs on commit
 cp .env.example .env         # then set ENTSOE_API_KEY
+uv run pytest                # unit tests of the evaluation core
 ```
 
 Then run the notebooks in order. The data comes from the [ENTSO-E Transparency Platform](https://transparency.entsoe.eu) and is not redistributed in this repository: `01_download.ipynb` downloads it.

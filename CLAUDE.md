@@ -212,14 +212,15 @@ src/
   config.py               # protocol constants: periods, zone, context, horizon, columns
   data.py                 # dataset loading, context / future covariates split for a day D
   evaluation.py           # common rolling loop + metrics
-results/                  # one parquet per model (not versioned)
+tests/                    # pytest unit tests of src/ on synthetic data (`uv run pytest`)
+results/                  # one parquet per model (not versioned); control period in results/control/
 figures/                  # final figures exported as PNG (versioned)
 ```
 
 - **Common evaluation loop**: a function that, for each day D, builds `history` (all columns up to the end of D−1) and `future_cov` (covariates and calendar for the 24 h of D), calls `model.predict(history, future_cov)` and records the result. `predict` returns 24 point values and, if available, the quantiles.
 - A model may keep an internal state (weekly SARIMA refit) as long as it only sees `history`.
 - Results format: columns `model`, `target_date`, `hour` (0–23, local time), `y_true`, `y_pred`, `q10` … `q90` (empty if not available).
-- Save forecasts to disk and do not recompute a model that has already been computed.
+- Save forecasts to disk and do not recompute a model that has already been computed. `run_rolling` reads `results/<name>.parquet` when it exists and raises an error if the cached days differ from the requested ones: evaluate the control period with `results_dir=RESULTS_DIR / "control"`, keeping the same model names.
 - Fix random seeds if a model is stochastic.
 - Default parameters, no hyperparameter search.
 - All code, comments, notebooks and documentation are written in English.

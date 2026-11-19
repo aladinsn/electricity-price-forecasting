@@ -16,7 +16,7 @@ FIGURES_DIR = ROOT / "figures"
 DATASET_PATH = DATA_DIR / "dataset.parquet"
 
 # Market
-ZONE = "DE_LU"  # entsoe-py zone code, to be confirmed in its documentation
+ZONE = "DE_LU"  # entsoe-py zone code
 TZ = "Europe/Berlin"
 
 # Periods (calendar days in Berlin time, bounds inclusive)
