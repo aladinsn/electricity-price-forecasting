@@ -43,7 +43,7 @@ FOOTER = "Day-ahead electricity price forecasting, DE-LU · Aladin & Léon · MS
 prs = Presentation()
 prs.slide_width, prs.slide_height = Inches(W), Inches(H)
 BLANK = prs.slide_layouts[6]
-TOTAL = 20  # checked at the end
+TOTAL = 21  # checked at the end
 
 
 # --------------------------------------------------------------------------------------------- helpers
@@ -411,6 +411,49 @@ text(s, MARGIN + 0.25, 5.5, W - 2 * MARGIN - 0.5, 0.9,
      "Same information in a column of the table: SARIMAX and the \"+ cov.\" foundation models all get **load_fc, "
      "wind_fc, solar_fc, non_working_day**. Default parameters, no hyperparameter search, no fine-tuning.",
      size=15, anchor=MSO_ANCHOR.MIDDLE)
+
+# --------------------------------------------------------------------------------------------- 9. foundation models
+s = new_slide("Foundation models: pre-trained once, used on any series", "Protocol", notes=(
+    "≈ 1:30. Not covered in the course, so a short introduction. A time series foundation model is a large neural "
+    "network pre-trained once, by Google or Mistral, on a very large collection of series from many domains, plus "
+    "synthetic series. The idea is the same as a language model that predicts the next word: here it predicts the "
+    "next values of a series from the values it is given. It is used zero-shot: we do not train it on our prices. "
+    "For each day D we give it the last 2,048 hours of prices, and in the '+ cov.' version the four covariates over "
+    "those hours and over day D, and it returns the 24 hours of D as a median and quantiles. Compare with SARIMA: "
+    "SARIMA estimates its parameters on our 8 weeks of prices; the foundation model never sees our data during "
+    "training, it only reads it as context. TimesFM 3 comes from Google Research, Timestral from Mistral AI; both "
+    "were released this autumn, which is why we check for contamination later."))
+# Flow: pre-training once, then zero-shot use on our data
+FY = CONTENT_Y + 0.1
+steps = [
+    ("Pre-training", "By Google / Mistral, on many series from many domains + synthetic series", SLATE, WHITE),
+    ("Our context for day D", "Last 2,048 h of prices (≈ 85 days) + in \"+ cov.\": the 4 covariates over context + D",
+     LIGHT, NAVY),
+    ("Forecast of day D", "24 hourly values: median + quantiles 10 … 90 %", AMBER, NAVY),
+]
+bw, aw = 3.45, 0.85
+for k, (head, body, fill, fg) in enumerate(steps):
+    x = MARGIN + k * (bw + aw)
+    rect(s, x, FY, bw, 1.75, fill, MSO_SHAPE.ROUNDED_RECTANGLE)
+    text(s, x + 0.2, FY + 0.15, bw - 0.4, 0.4, head, size=16, color=fg, bold=True)
+    text(s, x + 0.2, FY + 0.65, bw - 0.4, 1.0, body, size=14, color=fg)
+    if k < 2:
+        rect(s, x + bw + 0.15, FY + 0.65, aw - 0.3, 0.45, MUTED, MSO_SHAPE.RIGHT_ARROW)
+text(s, MARGIN, FY + 1.9, 3.45, 0.4, "once, before our project", size=13, color=MUTED, italic=True)
+text(s, MARGIN + bw + aw, FY + 1.9, 7.8, 0.4, "for every test day, no training on our prices (zero-shot)", size=13,
+     color=MUTED, italic=True)
+text(s, MARGIN, 3.95, W - 2 * MARGIN, 0.75,
+     "Like a language model predicts the next words of a text, it predicts the next values of a series. "
+     "SARIMA learns its parameters from our prices; a foundation model only reads them as context.",
+     size=15, color=NAVY)
+card(s, MARGIN, 4.8, 5.85, 1.85, "TimesFM 3", [
+    "Google Research, released 31 Aug 2026, 331M parameters",
+    "Pre-trained on public datasets, Wikipedia page views, Google Trends, synthetic data",
+], accent=C_TIMESFM, size=14, title_size=16)
+card(s, MARGIN + 6.25, 4.8, 5.85, 1.85, "Timestral-209M", [
+    "Mistral AI, released 15 Oct 2026; largest of 4 sizes (5M to 209M)",
+    "Pre-trained on synthetic series, then a mix of real and synthetic",
+], accent=C_TIMESTRAL, size=14, title_size=16)
 
 # --------------------------------------------------------------------------------------------- 9. evaluation
 s = new_slide("Evaluation: same days, same horizon, out of sample", "Protocol", notes=(
