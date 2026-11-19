@@ -7,10 +7,18 @@ from typing import Protocol
 import numpy as np
 import pandas as pd
 
-from src.config import HORIZON, QUANTILE_COLUMNS, QUANTILES, RESULTS_DIR, TARGET
+from src.config import HORIZON, QUANTILE_COLUMNS, QUANTILES, RESULTS_DIR, ROOT, TARGET
 from src.data import split_for_day
 
 RESULT_COLUMNS = ["model", "target_date", "hour", "y_true", "y_pred", *QUANTILE_COLUMNS]
+
+
+def _display_path(path: Path) -> str:
+    """Path relative to the project root when possible, so that printed outputs do not show the local machine."""
+    try:
+        return str(path.resolve().relative_to(ROOT))
+    except ValueError:
+        return str(path)
 
 
 class Forecaster(Protocol):
@@ -41,8 +49,8 @@ def run_rolling(
         results = pd.read_parquet(path)
         cached_days = pd.DatetimeIndex(results["target_date"].unique())
         if list(results.columns) != RESULT_COLUMNS or not cached_days.equals(days):
-            raise ValueError(f"{path} does not cover the requested days: delete it or use another results_dir")
-        print(f"{name}: loaded from {path}")
+            raise ValueError(f"{_display_path(path)} does not cover the requested days: delete it or use another results_dir")
+        print(f"{name}: loaded from {_display_path(path)}")
         return results
 
     start = time.perf_counter()
@@ -56,7 +64,7 @@ def run_rolling(
 
     path.parent.mkdir(parents=True, exist_ok=True)
     results.to_parquet(path, index=False)
-    print(f"{name}: {len(days)} days in {time.perf_counter() - start:.1f} s, saved to {path}")
+    print(f"{name}: {len(days)} days in {time.perf_counter() - start:.1f} s, saved to {_display_path(path)}")
     return results
 
 
