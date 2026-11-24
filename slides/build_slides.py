@@ -246,25 +246,47 @@ text(s, MARGIN, 4.75, 5.6, 1.9, [
     "Our forecast is issued on **D−1 before 12:00**: the 24 hourly prices of day D",
     "Since Oct. 2025 the market trades quarter-hours: we average them to hours",
 ], size=15, bullets=True)
-# Merit order sketch
+# Merit order sketch: a supply staircase. The x axis is a quantity (cumulative capacity, cheapest plants first),
+# the y axis the marginal cost. A vertical amber line is the demand of one scenario (vertical: demand is inelastic
+# in the short term); where it meets the staircase, a dashed line reads the price on the y axis.
 X0, Y0, PW, PH = 6.9, 1.6, 5.8, 4.4  # plot area
 text(s, X0, CONTENT_Y, PW, 0.4, "Merit order: the last plant needed sets the price", size=18, color=SLATE, bold=True)
-stack = [("Wind + solar", 1.5, 0.08, C_TIMESTRAL), ("Nuclear, lignite", 1.0, 0.45, C_BASELINE),
-         ("Coal", 0.9, 0.95, SLATE), ("Gas", 1.2, 1.7, C_TIMESFM), ("Oil", 0.5, 2.7, RGBColor(0xC0, 0x39, 0x2B))]
+# (label, width, height, colour, label shift): labels are shifted away from the demand lines
+stack = [("Wind + solar", 1.5, 0.08, C_TIMESTRAL, 0.2), ("Nuclear, lignite", 1.0, 0.45, C_BASELINE, 0.0),
+         ("Coal", 0.9, 0.95, SLATE, 0.0), ("Gas", 1.2, 1.7, C_TIMESFM, -0.2),
+         ("Oil", 0.5, 2.4, RGBColor(0xC0, 0x39, 0x2B), 0.0)]
 base_y = Y0 + PH
-xx = X0 + 0.4
-for label, width, height, col in stack:
-    rect(s, xx, base_y - height, width - 0.05, height, col)
-    text(s, xx - 0.05, base_y + 0.05, width + 0.1, 0.5, label, size=12, color=NAVY, align=PP_ALIGN.CENTER)
+ox = X0 + 0.4  # x of the y axis
+xx = ox
+for label, width, height, col, shift in stack:
+    rect(s, xx, base_y - height, width, height, col, line=WHITE)
+    text(s, xx - 0.1 + shift, base_y - height - 0.55, width + 0.2, 0.52, label, size=11, color=NAVY,
+         align=PP_ALIGN.CENTER, anchor=MSO_ANCHOR.BOTTOM)
     xx += width
-rect(s, X0 + 0.4, base_y, 5.2, 0.03, NAVY)
-rect(s, X0 + 0.4, Y0 + 1.0, 0.03, PH - 1.0, NAVY)
-text(s, X0 - 0.35, Y0 + 0.75, 1.6, 0.3, "price", size=12, color=MUTED)
-text(s, X0 + 5.0, base_y + 0.45, 1.0, 0.3, "capacity", size=12, color=MUTED, align=PP_ALIGN.RIGHT)
-for dx, label in [(1.6, "windy, sunny Sunday:\nlow or negative price"), (4.3, "calm winter evening:\ngas sets a high price")]:
-    rect(s, X0 + 0.4 + dx, Y0 + 1.25, 0.04, PH - 1.25, AMBER)
-    text(s, X0 + 0.4 + dx - 1.0 + (0.0 if dx < 3 else -0.4), Y0 + 0.55, 2.4, 0.7, label, size=12, color=NAVY,
-         bold=True, align=PP_ALIGN.CENTER)
+rect(s, ox, base_y, 5.2, 0.03, NAVY)
+rect(s, ox, Y0 + 1.0, 0.03, PH - 1.0, NAVY)
+text(s, ox - 1.15, Y0 + 0.95, 1.1, 0.5, ["price", "(EUR/MWh)"], size=11, color=MUTED, space_after=0, align=PP_ALIGN.RIGHT)
+text(s, X0 + 2.4, base_y + 0.4, 3.2, 0.3, "capacity, cheapest plants first (GW) →", size=11, color=MUTED,
+     align=PP_ALIGN.RIGHT)
+
+
+def dashed_h(slide, x0, x1, y, color, dash=0.08, gap=0.06):
+    while x0 < x1:
+        rect(slide, x0, y - 0.01, min(dash, x1 - x0), 0.025, color)
+        x0 += dash + gap
+
+
+for dx, h, scenario, price in [(0.3, 0.08, "windy, sunny Sunday:\nlow or negative price", "≈ 0"),
+                               (4.35, 1.7, "calm winter evening:\ngas sets a high price", "high")]:
+    lx = ox + dx
+    rect(s, lx - 0.02, Y0 + 1.25, 0.04, PH - 1.25, AMBER)
+    text(s, lx - 0.6, base_y + 0.03, 1.2, 0.3, "demand", size=11, color=NAVY, italic=True, align=PP_ALIGN.CENTER)
+    text(s, lx - 1.2 + (0.5 if dx < 1 else -0.35), Y0 + 0.55, 2.4, 0.7, scenario.split("\n"), size=12, color=NAVY, bold=True, align=PP_ALIGN.CENTER,
+         space_after=0)
+    py = base_y - h
+    dashed_h(s, ox + 0.05, lx, py, NAVY)
+    rect(s, lx - 0.08, py - 0.08, 0.16, 0.16, NAVY, MSO_SHAPE.OVAL)
+    text(s, ox - 0.75, py - 0.15, 0.72, 0.3, price, size=11, color=NAVY, bold=True, align=PP_ALIGN.RIGHT)
 
 # --------------------------------------------------------------------------------------------- 3. question
 s = new_slide("Research question: a two-way table", "Context", notes=(
